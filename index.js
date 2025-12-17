@@ -118,4 +118,4 @@ app.get('/api/video/:slug', async (req, res) => {
 
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
-});
+}); 

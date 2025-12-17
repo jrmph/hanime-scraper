@@ -1,17 +1,18 @@
 {
-  "name": "hanime-scraper-final",
-  "version": "1.0.0",
-  "description": "Hanime Scraper",
+  "name": "hanime-pro-scraper",
+  "version": "2.0.0",
+  "description": "Professional Scraper made by Jhames Martin",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
   },
   "dependencies": {
     "express": "^4.19.2",
-    "puppeteer": "latest",
+    "axios": "^1.6.8",
+    "cheerio": "^1.0.0-rc.12",
     "cors": "^2.8.5"
   },
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=18"
   }
 }

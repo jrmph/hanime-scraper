@@ -409,5 +409,3 @@ app.get('/api/:source/home', (req, res) => {
 app.listen(PORT, () => {
     console.log(`Ultimate Scraper running on port ${PORT}`);
 });
-
-

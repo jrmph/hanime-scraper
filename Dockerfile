@@ -1,32 +1,30 @@
-# Use the official Puppeteer image (Includes Chrome)
+# Use the official Puppeteer image which includes Chrome
 FROM ghcr.io/puppeteer/puppeteer:latest
 
-# Switch to root to configure permissions
+# Switch to root user to allow installation
 USER root
 
-# Working directory
+# Set the working directory
 WORKDIR /usr/src/app
 
-# Copy package info
+# Copy package files
 COPY package*.json ./
 
-# ENVIRONMENT VARIABLES (THE FIX)
-# 1. Skip downloading Chrome locally (because the image already has it)
+# CRITICAL: Tell Puppeteer NOT to download Chrome (we use the installed one)
 ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
-# 2. Tell Puppeteer where the global Chrome is located
 ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/google-chrome-stable
 
 # Install dependencies
 RUN npm install
 
-# Copy source code
+# Copy the rest of the app files
 COPY . .
 
-# Switch back to secure user
+# Switch back to the secure user provided by the image
 USER pptruser
 
-# Expose port
+# Expose the port
 EXPOSE 3000
 
-# Start
+# Start the app
 CMD [ "node", "index.js" ]

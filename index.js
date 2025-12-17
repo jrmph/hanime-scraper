@@ -1,43 +1,34 @@
 const express = require('express');
 const axios = require('axios');
-const cheerio = require('cheerio');
-const cors = require('cors'); // Import CORS
+const cors = require('cors');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// ENABLE CORS (Ito ang solusyon sa Failed to Fetch)
+// 1. ENABLE CORS (Para gumana sa frontend/localhost mo)
 app.use(cors());
 
-// Headers para hindi mahalata na bot tayo (Cloudflare bypass attempt)
+// 2. HEADERS (Para magmukhang tao/browser ang request natin)
 const HEADERS = {
   'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36',
-  'Accept': 'application/json, text/plain, */*',
-  'Accept-Language': 'en-US,en;q=0.9',
   'Referer': 'https://hanime.tv/',
   'Origin': 'https://hanime.tv',
-  'Connection': 'keep-alive'
+  'X-Requested-With': 'XMLHttpRequest'
 };
 
 app.get('/', (req, res) => {
-  res.json({
-    status: "Online",
-    cors: "Enabled",
-    message: "Pwede na mag-request galing sa localhost."
-  });
+  res.json({ status: "Online", message: "Hanime API with CORS & Video Streams enabled." });
 });
 
 /**
  * [GET] /api/home
+ * Kukuha ng Trending at New Releases
  */
 app.get('/api/home', async (req, res) => {
   try {
-    console.log("Fetching Home Data...");
-    const response = await axios.get('https://hanime.tv/api/v8/landing', {
-      headers: HEADERS
-    });
-    
+    const response = await axios.get('https://hanime.tv/api/v8/landing', { headers: HEADERS });
     const data = response.data;
+    
     const sections = data.sections.map(section => ({
       title: section.title,
       videos: section.hentai_video_ids.map(id => {
@@ -58,51 +49,84 @@ app.get('/api/home', async (req, res) => {
     
   } catch (error) {
     console.error('Home Error:', error.message);
-    // Ibalik ang error details para makita sa frontend kung bakit
-    res.status(500).json({
-      success: false,
-      error: "Failed to fetch home data",
-      details: error.message
-    });
+    res.status(500).json({ success: false, error: "Failed to fetch home data." });
   }
 });
 
 /**
  * [GET] /api/video/:slug
+ * Kukuha ng Video Stream (.m3u8)
  */
 app.get('/api/video/:slug', async (req, res) => {
   const { slug } = req.params;
   try {
-    console.log(`Fetching Video: ${slug}`);
-    const targetUrl = `https://hanime.tv/videos/hentai/${slug}`;
+    console.log(`Finding stream for: ${slug}`);
     
-    const { data: html } = await axios.get(targetUrl, { headers: HEADERS });
+    // --- STEP 1: Subukan kunin ang HTML Page ---
+    // Madalas nandito na yung link sa loob ng source code
+    const pageUrl = `https://hanime.tv/videos/hentai/${slug}`;
+    const { data: html } = await axios.get(pageUrl, { headers: HEADERS });
     
-    const $ = cheerio.load(html);
-    const pageTitle = $('title').text();
+    // Extract Title (Simple text search)
+    const titleMatch = html.match(/<title>(.*?)<\/title>/);
+    const title = titleMatch ? titleMatch[1].replace(' - hanime.tv', '') : slug;
     
-    // Regex para sa m3u8
+    // --- STEP 2: Hanapin ang .m3u8 gamit ang Regex ---
+    // Ang format sa Hanime ay: "url":"https://... .m3u8 ..."
     const m3u8Pattern = /"url":"(https:[^"]+?\.m3u8[^"]*?)"/g;
-    
     const matches = [];
     let match;
+    
     while ((match = m3u8Pattern.exec(html)) !== null) {
+      // Linisin ang URL (tanggalin ang unicode slash \u002F)
       const cleanUrl = match[1].replace(/\\u002F/g, "/");
       matches.push(cleanUrl);
     }
     
-    const uniqueStreams = [...new Set(matches)];
+    // Tanggalin ang duplicates
+    let streams = [...new Set(matches)];
     
-    if (uniqueStreams.length === 0) {
-      return res.status(404).json({ success: false, message: "No streams found (Premium or Changed Layout)" });
+    // --- STEP 3: BACKUP PLAN (Kung walang nahanap sa HTML) ---
+    // Kung walang nakuha, susubukan natin tawagin ang internal API nila gamit ang Video ID.
+    if (streams.length === 0) {
+      console.log("Regex failed, trying internal API lookup...");
+      
+      // Hanapin ang Video ID sa HTML (kung meron man)
+      // Pattern: "id":12345
+      const idMatch = html.match(/"id":(\d+),"slug":"${slug}"/);
+      
+      if (idMatch && idMatch[1]) {
+        const videoId = idMatch[1];
+        try {
+          const apiRes = await axios.get(`https://hanime.tv/api/v8/video?id=${videoId}`, { headers: HEADERS });
+          const manifest = apiRes.data.videos_manifest;
+          if (manifest && manifest.servers && manifest.servers[0]) {
+            manifest.servers[0].streams.forEach(s => {
+              if (s.url) streams.push(s.url);
+            });
+          }
+        } catch (apiErr) {
+          console.error("Backup API failed:", apiErr.message);
+        }
+      }
+    }
+    
+    // --- STEP 4: Return Result ---
+    if (streams.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "Stream not found. Cloudflare might be blocking requests or video is Premium."
+      });
     }
     
     res.json({
       success: true,
-      title: pageTitle,
+      title: title,
       slug: slug,
-      streams: uniqueStreams.map((url, index) => ({
+      // Format streams for frontend
+      streams: streams.map((url, index) => ({
         id: index + 1,
+        quality: "Auto/1080p", // Hanime usually provides one master playlist
         url: url
       }))
     });

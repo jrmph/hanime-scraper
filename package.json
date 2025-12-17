@@ -1,14 +1,15 @@
 {
-  "name": "ultimate-scraper-jhames",
-  "version": "3.0.0",
-  "description": "Professional Scraper Suite",
+  "name": "ultimate-stream-hub",
+  "version": "5.0.0",
+  "description": "All-in-One Streaming Scraper by Jhames Martin",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
   },
   "dependencies": {
     "express": "^4.19.2",
-    "puppeteer": "latest",
+    "axios": "^1.6.8",
+    "cheerio": "^1.0.0-rc.12",
     "cors": "^2.8.5"
   },
   "engines": {

@@ -1,27 +1,26 @@
-# Use official Puppeteer image
-FROM ghcr.io/puppeteer/puppeteer:21.5.0
+# CHANGE: Gamitin ang 'latest' para updated at walang warning
+FROM ghcr.io/puppeteer/puppeteer:latest
 
-# Switch to root user to perform setup
+# Switch to root user
 USER root
 
-# Create app directory
+# Working directory
 WORKDIR /usr/src/app
 
-# Copy package files (package.json)
+# Copy package files
 COPY package*.json ./
 
-# CHANGE: Use 'npm install' instead of 'npm ci'.
-# 'npm ci' requires a package-lock.json file to exist.
-# 'npm install' will simply install dependencies based on package.json.
-RUN npm install
+# Install dependencies
+# --no-audit para mas mabilis at bawas logs
+RUN npm install --no-audit
 
 # Copy app source
 COPY . .
 
-# Switch back to the specialized puppeteer user for security
+# Switch back to pptruser
 USER pptruser
 
-# Expose port 3000
+# Expose port
 EXPOSE 3000
 
 # Start command

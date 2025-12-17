@@ -2,14 +2,13 @@ const express = require('express');
 const puppeteer = require('puppeteer');
 
 const app = express();
-
-// Render uses a dynamic port variable. Default to 3000 if local.
 const PORT = process.env.PORT || 3000;
 
-// Function to launch browser with settings optimized for Docker/Render
+// Configuration for Puppeteer
 const launchBrowser = async () => {
   return await puppeteer.launch({
-    headless: "new",
+    // UPDATE: Sa latest puppeteer, 'true' ang tamang setting (hindi "new")
+    headless: true,
     args: [
       '--no-sandbox',
       '--disable-setuid-sandbox',
@@ -21,54 +20,37 @@ const launchBrowser = async () => {
   });
 };
 
-// Health Check Route (Para malaman ni Render na buhay ang app)
 app.get('/', (req, res) => {
   res.json({
     status: "Online",
-    message: "API is running",
-    usage: {
+    message: "Hanime Scraper API is running",
+    endpoints: {
       home: "/api/home",
-      video: "/api/video/:slug (example: /api/video/shachiku-cinderella-1)"
+      video: "/api/video/:slug"
     }
   });
 });
 
-/**
- * [GET] /api/home
- * Scrapes the landing page sections (Trending, New Releases, etc.)
- */
 app.get('/api/home', async (req, res) => {
   let browser;
   try {
-    console.log('Scraping Home Page...');
+    console.log('Scraping Home...');
     browser = await launchBrowser();
     const page = await browser.newPage();
-    
-    // Mock a real user agent
     await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
     
-    // Navigate
-    await page.goto('https://hanime.tv/', { waitUntil: 'domcontentloaded', timeout: 60000 });
+    await page.goto('https://hanime.tv/', { waitUntil: 'domcontentloaded', timeout: 90000 });
     
-    // Extract Nuxt Data
     const data = await page.evaluate(() => {
-      try {
-        return window.__NUXT__.state.data.landing;
-      } catch (e) {
-        return null;
-      }
+      try { return window.__NUXT__.state.data.landing; } catch (e) { return null; }
     });
     
-    if (!data) {
-      throw new Error("Failed to extract data. Cloudflare might be blocking or structure changed.");
-    }
+    if (!data) throw new Error("Failed to extract data. Cloudflare might be blocking.");
     
-    // Process Data
-    const allVideos = data.hentai_videos; // Look up table for videos
+    const allVideos = data.hentai_videos;
     const sections = data.sections.map(section => ({
       title: section.title,
       videos: section.hentai_video_ids.map(id => {
-        // Find video object in the array/object
         const v = Array.isArray(allVideos) ? allVideos.find(x => x.id === id) : allVideos[id];
         if (!v) return null;
         return {
@@ -92,10 +74,6 @@ app.get('/api/home', async (req, res) => {
   }
 });
 
-/**
- * [GET] /api/video/:slug
- * Scrapes a specific video page for description, tags, and VIDEO STREAMS (m3u8)
- */
 app.get('/api/video/:slug', async (req, res) => {
   const { slug } = req.params;
   let browser;
@@ -106,19 +84,13 @@ app.get('/api/video/:slug', async (req, res) => {
     await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
     
     const url = `https://hanime.tv/videos/hentai/${slug}`;
-    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
+    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 90000 });
     
     const videoState = await page.evaluate(() => {
-      try {
-        return window.__NUXT__.state.data.video;
-      } catch (e) {
-        return null;
-      }
+      try { return window.__NUXT__.state.data.video; } catch (e) { return null; }
     });
     
-    if (!videoState || !videoState.hentai_video) {
-      return res.status(404).json({ success: false, message: "Video not found or IP blocked." });
-    }
+    if (!videoState) return res.status(404).json({ success: false, message: "Video not found." });
     
     const info = videoState.hentai_video;
     const manifest = videoState.videos_manifest ? videoState.videos_manifest.servers[0] : null;
@@ -130,14 +102,12 @@ app.get('/api/video/:slug', async (req, res) => {
         name: info.name,
         description: info.description,
         tags: info.tags.map(t => t.text),
-        brand: info.brand,
-        release_date: info.released_at,
         views: info.views
       },
       streams: manifest ? manifest.streams.map(s => ({
         resolution: s.height + 'p',
         size_mb: s.filesize_mbs,
-        url: s.url // This is the m3u8 link
+        url: s.url
       })) : []
     });
     

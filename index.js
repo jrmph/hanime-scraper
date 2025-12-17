@@ -1,8 +1,6 @@
 const express = require('express');
-const axios = require('axios');
-const cheerio = require('cheerio');
+const puppeteer = require('puppeteer');
 const cors = require('cors');
-const path = require('path');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -10,16 +8,24 @@ const PORT = process.env.PORT || 3000;
 app.use(cors());
 app.use(express.json());
 
-// --- CONFIGURATION ---
-const HEADERS = {
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36',
-    'Referer': 'https://hanime.tv/',
-    'Origin': 'https://hanime.tv'
+// --- BROWSER LAUNCHER (OPTIMIZED FOR RENDER) ---
+const launchBrowser = async () => {
+    return await puppeteer.launch({
+        headless: true,
+        args: [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage', // Critical for Docker memory
+            '--disable-accelerated-2d-canvas',
+            '--disable-gpu',
+            '--single-process'
+        ]
+    });
 };
 
-// ==========================================
-//  FRONTEND: PROFESSIONAL UI (Served via Root)
-// ==========================================
+// =======================================================
+//  FRONTEND: PROFESSIONAL UI "JHAMES MARTIN EDITION"
+// =======================================================
 app.get('/', (req, res) => {
     res.send(`
 <!DOCTYPE html>
@@ -27,289 +33,206 @@ app.get('/', (req, res) => {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Hanime API - Jhames Martin</title>
+    <title>StreamHub - Ultimate Scraper</title>
     <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
     <script src="https://unpkg.com/@phosphor-icons/web"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;600;700&display=swap" rel="stylesheet">
     <style>
         :root {
-            --primary: #FFD700;
-            --primary-glow: rgba(255, 215, 0, 0.3);
-            --bg: #0a0a0a;
-            --surface: #161616;
+            --primary: #7C3AED; /* Violet */
+            --accent: #2DD4BF; /* Teal */
+            --bg: #09090b;
+            --surface: #18181b;
+            --surface-hover: #27272a;
             --text: #ffffff;
-            --text-muted: #888888;
+            --text-muted: #a1a1aa;
         }
 
         * { box-sizing: border-box; margin: 0; padding: 0; outline: none; }
-        
+
         body {
-            font-family: 'Outfit', sans-serif;
+            font-family: 'Space Grotesk', sans-serif;
             background-color: var(--bg);
             color: var(--text);
             overflow-x: hidden;
-            -webkit-font-smoothing: antialiased;
+            min-height: 100vh;
         }
-
-        /* --- Animations --- */
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
-        @keyframes pulse { 0% { box-shadow: 0 0 0 0 var(--primary-glow); } 70% { box-shadow: 0 0 20px 10px rgba(0,0,0,0); } 100% { box-shadow: 0 0 0 0 rgba(0,0,0,0); } }
 
         /* --- Header --- */
         header {
+            position: fixed; top: 0; width: 100%; z-index: 50;
+            background: rgba(9, 9, 11, 0.8);
+            backdrop-filter: blur(12px);
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+            padding: 1rem 2rem;
             display: flex;
             justify-content: space-between;
             align-items: center;
-            padding: 20px 40px;
-            background: rgba(10, 10, 10, 0.8);
-            backdrop-filter: blur(10px);
-            position: sticky;
-            top: 0;
-            z-index: 100;
-            border-bottom: 1px solid #222;
         }
 
-        .brand { font-size: 1.5rem; font-weight: 800; letter-spacing: -1px; }
-        .brand span { color: var(--primary); }
+        .logo { font-size: 1.5rem; font-weight: 700; letter-spacing: -1px; display: flex; align-items: center; gap: 8px; }
+        .logo i { color: var(--primary); }
+        .logo span { color: var(--text); }
+        .logo .pro-badge { background: var(--primary); color: white; font-size: 0.6rem; padding: 2px 6px; border-radius: 4px; margin-left: 8px; text-transform: uppercase; }
+
+        /* --- Sidebar & Layout --- */
+        .wrapper { display: flex; padding-top: 80px; min-height: 100vh; }
         
-        .status-badge {
-            background: rgba(0, 255, 0, 0.1);
-            color: #00ff88;
-            padding: 5px 12px;
-            border-radius: 20px;
-            font-size: 0.75rem;
-            font-weight: 600;
-            border: 1px solid rgba(0, 255, 0, 0.2);
-            display: flex;
-            align-items: center;
-            gap: 6px;
+        .sidebar {
+            width: 260px;
+            padding: 20px;
+            position: fixed;
+            height: 100vh;
+            border-right: 1px solid rgba(255,255,255,0.05);
+            display: none; /* Hidden on mobile by default */
         }
-        .status-dot { width: 8px; height: 8px; background: #00ff88; border-radius: 50%; box-shadow: 0 0 10px #00ff88; }
+        
+        @media(min-width: 1024px) { .sidebar { display: block; } .main-content { margin-left: 260px; } }
 
-        /* --- Hero --- */
-        .hero {
-            text-align: center;
-            padding: 80px 20px;
-            background: radial-gradient(circle at center, #1a1a1a 0%, var(--bg) 70%);
+        .main-content {
+            flex: 1;
+            padding: 20px;
+            width: 100%;
         }
 
-        .hero h1 {
-            font-size: 3.5rem;
-            margin-bottom: 10px;
-            background: linear-gradient(to right, #fff, #888);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            animation: fadeIn 0.8s ease-out;
-        }
-
-        .hero p { color: var(--text-muted); font-size: 1.1rem; max-width: 600px; margin: 0 auto 30px; animation: fadeIn 1s ease-out; }
-
-        .api-pill {
-            display: inline-block;
-            background: #222;
-            padding: 10px 20px;
+        .nav-category { font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px; margin-top: 20px; }
+        .nav-item {
+            display: flex; align-items: center; gap: 10px;
+            padding: 12px 15px;
             border-radius: 8px;
-            font-family: monospace;
-            color: var(--primary);
-            border: 1px solid #333;
-            margin-bottom: 40px;
+            color: var(--text-muted);
+            text-decoration: none;
+            transition: 0.2s;
+            cursor: pointer;
+            margin-bottom: 5px;
         }
+        .nav-item:hover, .nav-item.active { background: var(--surface-hover); color: white; }
+        .nav-item i { font-size: 1.2rem; }
 
-        /* --- Content Grid --- */
-        .container { max-width: 1400px; margin: 0 auto; padding: 0 20px 80px; }
+        /* --- Grid --- */
+        .content-header { margin-bottom: 2rem; }
+        .content-header h1 { font-size: 2rem; font-weight: 700; margin-bottom: 0.5rem; }
+        .content-header p { color: var(--text-muted); }
 
-        .section-header {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            margin-bottom: 25px;
-            margin-top: 40px;
-            font-size: 1.5rem;
-            font-weight: 600;
-            border-left: 4px solid var(--primary);
-            padding-left: 15px;
-        }
-
-        .grid {
+        .video-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-            gap: 25px;
+            grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+            gap: 20px;
         }
 
         .card {
             background: var(--surface);
             border-radius: 12px;
             overflow: hidden;
-            transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
-            border: 1px solid #222;
             cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
             position: relative;
+            border: 1px solid rgba(255,255,255,0.05);
         }
 
-        .card:hover {
-            transform: translateY(-8px);
-            border-color: var(--primary);
-            box-shadow: 0 10px 30px -10px rgba(0,0,0,0.5);
-        }
+        .card:hover { transform: translateY(-5px); box-shadow: 0 10px 30px rgba(0,0,0,0.5); border-color: var(--primary); }
 
-        .card-img-wrap {
-            position: relative;
-            width: 100%;
-            aspect-ratio: 16/9;
-            overflow: hidden;
-        }
-
-        .card-img {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-            transition: transform 0.5s;
-        }
-
-        .card:hover .card-img { transform: scale(1.05); }
-
-        .play-overlay {
-            position: absolute;
-            top: 0; left: 0; right: 0; bottom: 0;
-            background: rgba(0,0,0,0.4);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            opacity: 0;
-            transition: opacity 0.3s;
-        }
-
-        .card:hover .play-overlay { opacity: 1; }
-
-        .play-icon {
-            font-size: 3rem;
-            color: var(--primary);
-            filter: drop-shadow(0 0 10px rgba(0,0,0,0.5));
-        }
-
-        .card-info { padding: 15px; }
+        .card-poster { width: 100%; aspect-ratio: 16/9; object-fit: cover; background: #222; }
         
-        .card-title {
-            font-size: 0.95rem;
-            font-weight: 600;
-            margin-bottom: 8px;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
+        .card-body { padding: 15px; }
+        .card-title { font-weight: 600; font-size: 0.95rem; margin-bottom: 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .card-meta { font-size: 0.8rem; color: var(--text-muted); display: flex; justify-content: space-between; }
 
-        .card-meta {
-            font-size: 0.8rem;
-            color: var(--text-muted);
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
+        /* --- Loader --- */
+        .loader-container {
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            height: 50vh; text-align: center;
         }
+        .spinner {
+            width: 40px; height: 40px; border: 4px solid var(--surface-hover);
+            border-top: 4px solid var(--primary); border-radius: 50%;
+            animation: spin 1s linear infinite; margin-bottom: 20px;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
 
-        /* --- Modal --- */
-        #modal {
+        /* --- Player Modal --- */
+        .modal {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0,0,0,0.9);
-            backdrop-filter: blur(5px);
-            z-index: 1000;
-            display: none;
-            justify-content: center;
-            align-items: center;
-            opacity: 0;
-            transition: opacity 0.3s;
+            background: rgba(0,0,0,0.95); z-index: 100;
+            display: none; align-items: center; justify-content: center;
+            opacity: 0; transition: opacity 0.3s;
         }
-
-        #modal.active { display: flex; opacity: 1; }
-
-        .modal-content {
-            width: 90%; max-width: 1000px;
-            background: #111;
-            border-radius: 16px;
-            border: 1px solid #333;
-            overflow: hidden;
-            box-shadow: 0 20px 50px rgba(0,0,0,0.8);
-            position: relative;
-        }
-
-        .video-wrapper { position: relative; width: 100%; background: #000; }
+        .modal.open { display: flex; opacity: 1; }
+        .modal-content { width: 90%; max-width: 1100px; background: var(--bg); border-radius: 16px; overflow: hidden; border: 1px solid #333; }
+        .player-wrapper { position: relative; width: 100%; background: #000; }
         video { width: 100%; display: block; max-height: 80vh; }
-
-        .modal-header {
-            padding: 20px;
-            display: flex;
-            justify-content: space-between;
-            align-items: flex-start;
-            background: #161616;
-        }
-
-        .close-btn {
-            background: transparent;
-            border: none;
-            color: #fff;
-            font-size: 1.5rem;
-            cursor: pointer;
-            transition: color 0.2s;
-        }
-        .close-btn:hover { color: var(--primary); }
-
-        .modal-tags { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
-        .tag {
-            background: #222; color: #ccc;
-            padding: 4px 10px; border-radius: 4px;
-            font-size: 0.75rem;
-        }
-
-        /* --- Footer --- */
-        footer {
-            text-align: center;
-            padding: 40px;
-            border-top: 1px solid #222;
-            color: var(--text-muted);
-            font-size: 0.9rem;
-        }
-        footer span { color: var(--primary); font-weight: 600; }
-
-        /* Loader */
-        .loader {
-            display: flex; flex-direction: column; align-items: center; margin-top: 50px;
-            color: var(--primary);
-        }
+        .modal-header { padding: 20px; display: flex; justify-content: space-between; background: var(--surface); }
+        .close-btn { background: none; border: none; color: white; font-size: 1.5rem; cursor: pointer; }
+        
+        .tag-pill { background: #333; padding: 2px 8px; border-radius: 4px; font-size: 0.7rem; margin-right: 5px; }
+        
+        /* Mobile Nav Toggle */
+        .menu-btn { display: block; font-size: 1.5rem; cursor: pointer; color: white; margin-right: 15px; }
+        @media(min-width: 1024px) { .menu-btn { display: none; } }
     </style>
 </head>
 <body>
 
     <header>
-        <div class="brand">Hanime<span>Scraper</span></div>
-        <div class="status-badge"><div class="status-dot"></div> SYSTEM ONLINE</div>
+        <div style="display: flex; align-items: center;">
+            <i class="ph ph-list menu-btn" onclick="document.querySelector('.sidebar').style.display = 'block'"></i>
+            <div class="logo">
+                <i class="ph ph-play-circle"></i>
+                StreamHub <span class="pro-badge">PRO</span>
+            </div>
+        </div>
+        <div style="font-size: 0.8rem; color: var(--text-muted);">
+            Jhames Martin Build v3.0
+        </div>
     </header>
 
-    <div class="hero">
-        <h1>Advanced API Scraper</h1>
-        <p>Professional high-performance scraper with lightweight architecture.</p>
-        <div class="api-pill">GET /api/home</div>
-    </div>
+    <div class="wrapper">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="nav-category">Sources</div>
+            <div class="nav-item active" onclick="loadSource('hanime')">
+                <i class="ph ph-fire"></i> Hanime.tv
+            </div>
+            <div class="nav-item" onclick="alert('Coming Soon! Server resources limited.')">
+                <i class="ph ph-film-strip"></i> AnimePahe
+            </div>
+            <div class="nav-item" onclick="alert('Coming Soon!')">
+                <i class="ph ph-ghost"></i> HStream
+            </div>
+            
+            <div class="nav-category">Library</div>
+            <div class="nav-item"><i class="ph ph-heart"></i> Favorites</div>
+            <div class="nav-item"><i class="ph ph-clock"></i> History</div>
+        </aside>
 
-    <div class="container" id="app">
-        <div class="loader" id="main-loader">
-            <i class="ph ph-spinner-gap ph-spin" style="font-size: 3rem;"></i>
-            <p style="margin-top: 15px; color: #666;">Fetching latest content...</p>
-        </div>
-    </div>
+        <!-- Main Content -->
+        <main class="main-content">
+            <div class="content-header">
+                <h1>Trending Now</h1>
+                <p>Latest uploads scraped fresh from Hanime.tv</p>
+            </div>
 
-    <footer>
-        Designed & Developed by <span>Jhames Martin</span>
-    </footer>
+            <div id="app-container">
+                <!-- Loader -->
+                <div class="loader-container">
+                    <div class="spinner"></div>
+                    <h3>Connecting to Docker Server...</h3>
+                    <p style="color: #666; font-size: 0.9rem;">Please wait 30-60s for Puppeteer to boot up.</p>
+                </div>
+            </div>
+        </main>
+    </div>
 
     <!-- Video Modal -->
-    <div id="modal">
+    <div id="video-modal" class="modal">
         <div class="modal-content">
-            <div class="video-wrapper">
-                <video id="player" controls playsinline></video>
+            <div class="player-wrapper">
+                <video id="main-player" controls playsinline></video>
             </div>
             <div class="modal-header">
-                <div style="flex: 1;">
-                    <h2 id="modal-title" style="font-size: 1.2rem; margin-bottom: 5px;">Loading...</h2>
-                    <div id="modal-tags" class="modal-tags"></div>
+                <div>
+                    <h3 id="modal-title">Loading Title...</h3>
+                    <div id="modal-tags" style="margin-top: 5px;"></div>
                 </div>
                 <button class="close-btn" onclick="closeModal()"><i class="ph ph-x"></i></button>
             </div>
@@ -317,144 +240,158 @@ app.get('/', (req, res) => {
     </div>
 
     <script>
-        const API_URL = window.location.origin;
+        const API_BASE = window.location.origin;
 
-        // Fetch Data on Load
-        document.addEventListener('DOMContentLoaded', async () => {
-            try {
-                const res = await fetch(\`\${API_URL}/api/home\`);
-                const data = await res.json();
-                
-                if(data.success) {
-                    renderContent(data.sections);
-                } else {
-                    showError("API responded but returned no data.");
-                }
-            } catch (err) {
-                showError("Failed to connect to API. " + err.message);
-            }
+        // Init
+        document.addEventListener('DOMContentLoaded', () => {
+            loadSource('hanime');
         });
 
-        function renderContent(sections) {
-            const container = document.getElementById('app');
-            const loader = document.getElementById('main-loader');
-            loader.style.display = 'none';
+        async function loadSource(source) {
+            const container = document.getElementById('app-container');
+            
+            // Fetch Hanime
+            if(source === 'hanime') {
+                try {
+                    const res = await fetch(\`\${API_BASE}/api/hanime/home\`);
+                    const data = await res.json();
+                    
+                    if(data.success) {
+                        renderGrid(data.sections);
+                    } else {
+                        container.innerHTML = \`<div style="text-align:center; padding: 50px; color: red;">Error: \${data.error}</div>\`;
+                    }
+                } catch (e) {
+                    container.innerHTML = \`<div style="text-align:center; padding: 50px;">
+                        <h3>Request Timed Out</h3>
+                        <p>The Render Free Tier server is taking too long to boot Chrome.</p>
+                        <button onclick="location.reload()" style="padding: 10px 20px; margin-top: 10px; cursor:pointer;">Try Again</button>
+                    </div>\`;
+                }
+            }
+        }
+
+        function renderGrid(sections) {
+            const container = document.getElementById('app-container');
+            container.innerHTML = ''; // Clear loader
 
             sections.forEach(section => {
                 if(section.videos.length === 0) return;
 
-                const sectionHTML = \`
-                    <div class="section-header">
-                        <i class="ph ph-trend-up"></i> \${section.title}
-                    </div>
-                    <div class="grid">
-                        \${section.videos.map(v => createCard(v)).join('')}
-                    </div>
-                \`;
-                container.innerHTML += sectionHTML;
+                const sectionTitle = document.createElement('h2');
+                sectionTitle.style.marginBottom = '15px';
+                sectionTitle.style.marginTop = '30px';
+                sectionTitle.style.fontSize = '1.2rem';
+                sectionTitle.innerHTML = \`<i class="ph ph-caret-right"></i> \${section.title}\`;
+                
+                const grid = document.createElement('div');
+                grid.className = 'video-grid';
+                
+                section.videos.forEach(vid => {
+                    const card = document.createElement('div');
+                    card.className = 'card';
+                    card.onclick = () => playVideo(vid.slug);
+                    card.innerHTML = \`
+                        <img src="\${vid.cover_url}" class="card-poster" loading="lazy">
+                        <div class="card-body">
+                            <div class="card-title">\${vid.title}</div>
+                            <div class="card-meta">
+                                <span>\${formatViews(vid.views)} views</span>
+                                <span style="color: var(--primary);">HD</span>
+                            </div>
+                        </div>
+                    \`;
+                    grid.appendChild(card);
+                });
+
+                container.appendChild(sectionTitle);
+                container.appendChild(grid);
             });
         }
 
-        function createCard(video) {
-            const views = new Intl.NumberFormat('en-US', { notation: "compact" }).format(video.views);
-            return \`
-                <div class="card" onclick="playVideo('\${video.slug}')">
-                    <div class="card-img-wrap">
-                        <img src="\${video.cover_url}" class="card-img" loading="lazy" alt="\${video.title}">
-                        <div class="play-overlay"><i class="ph ph-play-circle play-icon"></i></div>
-                    </div>
-                    <div class="card-info">
-                        <div class="card-title">\${video.title}</div>
-                        <div class="card-meta">
-                            <span><i class="ph ph-eye"></i> \${views}</span>
-                            <span>HD</span>
-                        </div>
-                    </div>
-                </div>
-            \`;
+        function formatViews(num) {
+            return new Intl.NumberFormat('en-US', { notation: "compact" }).format(num);
         }
 
-        function showError(msg) {
-            document.getElementById('main-loader').innerHTML = \`<p style="color: red;">Error: \${msg}</p>\`;
-        }
-
-        // --- Video Logic ---
-        let hlsInstance = null;
+        // --- Player Logic ---
+        let hls = null;
 
         async function playVideo(slug) {
-            const modal = document.getElementById('modal');
-            const video = document.getElementById('player');
+            const modal = document.getElementById('video-modal');
+            const video = document.getElementById('main-player');
             const titleEl = document.getElementById('modal-title');
-            const tagsEl = document.getElementById('modal-tags');
-
-            modal.classList.add('active');
-            titleEl.innerText = "Fetching Stream...";
-            tagsEl.innerHTML = '';
+            
+            modal.classList.add('open');
+            titleEl.innerText = "Fetching Stream Link...";
             
             try {
-                const res = await fetch(\`\${API_URL}/api/video/\${slug}\`);
+                const res = await fetch(\`\${API_BASE}/api/hanime/video/\${slug}\`);
                 const data = await res.json();
 
-                if(data.success) {
-                    titleEl.innerText = data.details.title || data.title;
-                    
-                    if(data.details.tags) {
-                        tagsEl.innerHTML = data.details.tags.map(t => \`<span class="tag">\${t}</span>\`).join('');
-                    }
-
-                    const streamURL = data.streams[0].url;
+                if(data.success && data.streams.length > 0) {
+                    titleEl.innerText = data.details.title;
+                    const streamUrl = data.streams[0].url;
 
                     if (Hls.isSupported()) {
-                        if(hlsInstance) hlsInstance.destroy();
-                        hlsInstance = new Hls();
-                        hlsInstance.loadSource(streamURL);
-                        hlsInstance.attachMedia(video);
-                        hlsInstance.on(Hls.Events.MANIFEST_PARSED, () => video.play());
+                        if(hls) hls.destroy();
+                        hls = new Hls();
+                        hls.loadSource(streamUrl);
+                        hls.attachMedia(video);
+                        hls.on(Hls.Events.MANIFEST_PARSED, () => video.play());
                     } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-                        video.src = streamURL;
+                        video.src = streamUrl;
                         video.play();
                     }
                 } else {
-                    titleEl.innerText = "Error: Stream not found (Premium/Blocked)";
+                    titleEl.innerText = "Error: Stream Not Found";
                 }
-            } catch (err) {
-                titleEl.innerText = "Error fetching video details";
+            } catch (e) {
+                titleEl.innerText = "Server Error";
             }
         }
 
         function closeModal() {
-            const modal = document.getElementById('modal');
-            const video = document.getElementById('player');
-            modal.classList.remove('active');
+            const modal = document.getElementById('video-modal');
+            const video = document.getElementById('main-player');
+            modal.classList.remove('open');
             video.pause();
-            video.src = "";
-            if(hlsInstance) hlsInstance.destroy();
+            if(hls) hls.destroy();
         }
-
-        // Close on outside click
-        document.getElementById('modal').addEventListener('click', (e) => {
-            if(e.target.id === 'modal') closeModal();
-        });
     </script>
 </body>
 </html>
     `);
 });
 
-// ==========================================
-//  BACKEND: LIGHTWEIGHT API (Axios)
-// ==========================================
+// =======================================================
+//  BACKEND: PUPPETEER SCRAPER LOGIC
+// =======================================================
 
-// GET /api/home
-app.get('/api/home', async (req, res) => {
+app.get('/api/hanime/home', async (req, res) => {
+    let browser;
     try {
-        const response = await axios.get('https://hanime.tv/api/v8/landing', { headers: HEADERS });
-        const data = response.data;
+        console.log("Launching Browser for Home...");
+        browser = await launchBrowser();
+        const page = await browser.newPage();
+        // Set User Agent to bypass Cloudflare
+        await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+        
+        // Go to Hanime
+        await page.goto('https://hanime.tv/', { waitUntil: 'domcontentloaded', timeout: 90000 });
 
+        // Extract Data
+        const data = await page.evaluate(() => {
+            try { return window.__NUXT__.state.data.landing; } catch (e) { return null; }
+        });
+
+        if (!data) throw new Error("Failed to get NUXT data");
+
+        // Format Data
+        const allVideos = data.hentai_videos;
         const sections = data.sections.map(section => ({
             title: section.title,
             videos: section.hentai_video_ids.map(id => {
-                const v = data.hentai_videos.find(val => val.id === id);
+                const v = Array.isArray(allVideos) ? allVideos.find(x => x.id === id) : allVideos[id];
                 if (!v) return null;
                 return {
                     id: v.id,
@@ -467,47 +404,48 @@ app.get('/api/home', async (req, res) => {
         }));
 
         res.json({ success: true, sections });
-    } catch (error) {
-        res.status(500).json({ success: false, error: "Failed to fetch home data." });
+
+    } catch (e) {
+        console.error("Home Error:", e.message);
+        res.status(500).json({ success: false, error: e.message });
+    } finally {
+        if (browser) await browser.close();
     }
 });
 
-// GET /api/video/:slug
-app.get('/api/video/:slug', async (req, res) => {
+app.get('/api/hanime/video/:slug', async (req, res) => {
     const { slug } = req.params;
+    let browser;
     try {
-        const pageUrl = `https://hanime.tv/videos/hentai/${slug}`;
-        const { data: html } = await axios.get(pageUrl, { headers: HEADERS });
-
-        // Method 1: Regex Scraping (Lightweight & Fast)
-        const m3u8Pattern = /"url":"(https:[^"]+?\.m3u8[^"]*?)"/g;
-        const matches = [];
-        let match;
-        while ((match = m3u8Pattern.exec(html)) !== null) {
-            matches.push(match[1].replace(/\\u002F/g, "/"));
-        }
-        let streams = [...new Set(matches)];
-
-        // Extract Metadata
-        const $ = cheerio.load(html);
-        const title = $('title').text().replace(' - hanime.tv', '');
+        console.log(`Getting Video: ${slug}`);
+        browser = await launchBrowser();
+        const page = await browser.newPage();
+        await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
         
-        // Return Result
-        if (streams.length > 0) {
-            res.json({
-                success: true,
-                title: title,
-                details: { title: title, tags: [] }, // Basic meta for now
-                streams: streams.map(url => ({ url }))
-            });
-        } else {
-            res.status(404).json({ success: false, message: "Stream not found (Cloudflare blocked or Premium)" });
-        }
-    } catch (error) {
-        res.status(500).json({ success: false, error: error.message });
+        await page.goto(`https://hanime.tv/videos/hentai/${slug}`, { waitUntil: 'domcontentloaded', timeout: 90000 });
+
+        const videoData = await page.evaluate(() => {
+            try { return window.__NUXT__.state.data.video; } catch (e) { return null; }
+        });
+
+        if (!videoData) throw new Error("Video data not found");
+
+        const manifest = videoData.videos_manifest ? videoData.videos_manifest.servers[0] : null;
+        
+        res.json({
+            success: true,
+            details: { title: videoData.hentai_video.name },
+            streams: manifest ? manifest.streams.map(s => ({ url: s.url, res: s.height })) : []
+        });
+
+    } catch (e) {
+        console.error("Video Error:", e.message);
+        res.status(500).json({ success: false, error: e.message });
+    } finally {
+        if (browser) await browser.close();
     }
 });
 
 app.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
+    console.log(`Jhames Martin Scraper running on port ${PORT}`);
 });

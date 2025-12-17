@@ -1,15 +1,14 @@
 {
-  "name": "hanime-pro-scraper",
-  "version": "2.0.0",
-  "description": "Professional Scraper made by Jhames Martin",
+  "name": "ultimate-scraper-jhames",
+  "version": "3.0.0",
+  "description": "Professional Scraper Suite",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
   },
   "dependencies": {
     "express": "^4.19.2",
-    "axios": "^1.6.8",
-    "cheerio": "^1.0.0-rc.12",
+    "puppeteer": "latest",
     "cors": "^2.8.5"
   },
   "engines": {
